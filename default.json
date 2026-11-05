@@ -1,0 +1,22 @@
+{
+    "endpoints": [
+        {
+            "url": "https://www.tsa.cn/api/time/getCurrentTime",
+            "type": "text",
+            "precision": "1ms",
+            "format": "ts",
+            "method": "get"
+        },
+        {
+            "url": "https://sigelith.org/api/now/",
+            "type": "json:utc",
+            "format": "iso",
+            "method": "get"
+        },
+        {
+            "url": "https://aisenseapi.com/services/v1/timestamp",
+            "type": "json:timestamp",
+            "precision": "1s"
+        }
+    ]
+}

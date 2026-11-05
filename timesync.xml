@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- https://stackoverflow.com/a/31561120/24304311 -->
+<!-- https://learn.microsoft.com/en-us/dotnet/api/microsoft.build.tasks.deployment.manifestutilities -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+<assemblyIdentity
+    version="0.0.0.0"
+    processorArchitecture="amd64"
+    name="timesync.exe"
+    type="win32"
+/>
+<description>timesync</description>
+<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+        <requestedPrivileges>
+            <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        </requestedPrivileges>
+    </security>
+</trustInfo>
+</assembly>

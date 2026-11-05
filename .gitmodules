@@ -1,0 +1,3 @@
+[submodule "WindowsHModular"]
+	path = WindowsHModular
+	url = git@github.com:Leandros/WindowsHModular.git

@@ -44,6 +44,9 @@ build-linux: $(JSON_DST) $(GO_SRCS)
 
 build-win: $(JSON_DST) $(SYSO) $(GO_SRCS)
 	@echo ">> build windows/$(GOARCH)"
+	@command -v $(WINDOWS_CC) >/dev/null 2>&1 || { \
+		echo "error: Windows C compiler '$(WINDOWS_CC)' was not found; install MinGW-w64 or set WINDOWS_CC" >&2; \
+		exit 1; }
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=windows GOARCH=$(GOARCH) CC=$(WINDOWS_CC) \
 		$(GO) build $(BUILDFLAGS) -ldflags="$(LDFLAGS)" \

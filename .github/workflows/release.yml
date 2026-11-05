@@ -29,6 +29,12 @@ jobs:
                   go-version-file: "go.mod"
                   cache: true
 
+            - name: Install Windows cross compiler
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install --yes --no-install-recommends gcc-mingw-w64-x86-64
+                  x86_64-w64-mingw32-gcc --version
+
             - name: Run Make
               run: |
                   echo "Building..."

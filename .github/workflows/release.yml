@@ -46,8 +46,8 @@ jobs:
               run: |
                   mkdir -p release_dist
 
-                  tar -a -cvf release_dist/timesync-linux-amd64.zip -C bin timesync-linux-amd64
-                  tar -a -cvf release_dist/timesync-windows-amd64.zip -C bin timesync-windows-amd64.exe
+                  zip -j release_dist/timesync-linux-amd64.zip bin/timesync-linux-amd64
+                  zip -j release_dist/timesync-windows-amd64.zip bin/timesync-windows-amd64.exe
 
                   INPUT_TAG="${{ github.event.inputs.release_tag }}"
                   if [ -n "$INPUT_TAG" ]; then

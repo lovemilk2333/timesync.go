@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
+	"log/slog"
 )
 
 //go:embed embedded.json
@@ -25,38 +25,38 @@ const ConfigFile = "config.json"
 func load_config() *Config {
 	var default_config Config
 	if err := json.Unmarshal(default_config_data, &default_config); err != nil {
-		logger.DPanic("failed to unmarshal default config json", zap.Error(err))
+		logger.Error("failed to unmarshal default config json", slog.Any("error", err))
 		return nil
 	}
 	if err := default_config.Parse(v); err != nil {
-		logger.DPanic("failed to check default config json", zap.Error(err))
+		logger.Error("failed to check default config json", slog.Any("error", err))
 		return nil
 	}
 
 	file, err := os.Open(ConfigFile)
 	if err != nil {
-		logger.Info("using embedded default config", zap.String("file", ConfigFile))
+		logger.Info("using embedded default config", slog.String("file", ConfigFile))
 		return &default_config
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, MaxConfigSize+1))
 	if err != nil {
-		logger.Error("failed to read config file", zap.Error(err))
+		logger.Error("failed to read config file", slog.Any("error", err))
 		return &default_config
 	}
 	if int64(len(data)) > MaxConfigSize {
-		logger.Error("config file size exceeds limit", zap.Int64("max_size", MaxConfigSize))
+		logger.Error("config file size exceeds limit", slog.Int64("max_size", MaxConfigSize))
 		return &default_config
 	}
 
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
-		logger.Error("failed to unmarshal config json", zap.Error(err))
+		logger.Error("failed to unmarshal config json", slog.Any("error", err))
 		return &default_config
 	}
 	if err := config.Parse(v); err != nil {
-		logger.Error("failed to check config json", zap.Error(err))
+		logger.Error("failed to check config json", slog.Any("error", err))
 		return &default_config
 	}
 	return &config
@@ -175,17 +175,17 @@ func sync_time_with_client(config *Config, client http_doer, set_time func(*time
 		return fmt.Errorf("no time endpoints configured")
 	}
 	for _, endpoint := range config.Endpoints {
-		logger.Info("time endpoint start to sync", zap.String("url", endpoint.OriginalURL))
+		logger.Info("time endpoint start to sync", slog.String("url", endpoint.OriginalURL))
 		server_time, err := fetch_endpoint_time(client, config, endpoint)
 		if err != nil {
-			logger.Warn("time endpoint failed", zap.String("url", endpoint.OriginalURL), zap.Error(err))
+			logger.Warn("time endpoint failed", slog.String("url", endpoint.OriginalURL), slog.Any("error", err))
 			continue
 		}
-		logger.Debug("time endpoint returned a time", zap.String("url", endpoint.OriginalURL), zap.Time("time", server_time))
+		logger.Debug("time endpoint returned a time", slog.String("url", endpoint.OriginalURL), slog.Time("time", server_time))
 		if err := set_time(&server_time); err != nil {
 			return fmt.Errorf("set system time: %w", err)
 		}
-		logger.Info("system time synchronized", zap.String("url", endpoint.OriginalURL), zap.Time("time", server_time))
+		logger.Info("system time synchronized", slog.String("url", endpoint.OriginalURL), slog.Time("time", server_time))
 		return nil
 	}
 	return fmt.Errorf("all %d time endpoints failed", len(config.Endpoints))
@@ -220,7 +220,7 @@ func wait_enter_exit(timeout time.Duration) {
 
 func Main() {
 	if current_dir, err := os.Getwd(); err == nil {
-		logger.Debug("loading config from current working directory", zap.String("dir", current_dir))
+		logger.Debug("loading config from current working directory", slog.String("dir", current_dir))
 	}
 
 	config := load_config()
@@ -228,11 +228,11 @@ func Main() {
 		return
 	}
 	if level, ok := config.GetLogLevel(); ok {
-		log_level.SetLevel(level)
+		log_level.Set(level)
 	}
-	defer logger.Sync()
+	defer sync_logger()
 	if err := sync_time(config, set_system_time); err != nil {
-		logger.Error("time synchronization failed", zap.Error(err))
+		logger.Error("time synchronization failed", slog.Any("error", err))
 	}
 
 	wait_enter_exit(time.Second * 7)

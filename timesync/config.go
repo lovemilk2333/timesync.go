@@ -3,6 +3,7 @@ package timesync
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"go.uber.org/zap/zapcore"
 )
 
 type StructValidator func(any) validator.ValidationErrors
@@ -41,20 +41,15 @@ const EndpointJSONPathEscape = string(EndpointJSONPathSeparator) + string(Endpoi
 
 type EndpointMethod string
 
-var valid_methods = map[EndpointMethod]bool{
-	http.MethodGet:     true,
-	http.MethodHead:    true,
-	http.MethodPost:    true,
-	http.MethodPut:     true,
-	http.MethodPatch:   true,
-	http.MethodDelete:  true,
-	http.MethodConnect: true,
-	http.MethodOptions: true,
-	http.MethodTrace:   true,
-}
-
 func is_valid_method(m EndpointMethod) bool {
-	return valid_methods[m]
+	switch m {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodConnect, http.MethodOptions,
+		http.MethodTrace:
+		return true
+	default:
+		return false
+	}
 }
 
 type EndpointType string
@@ -331,16 +326,6 @@ func (this *Endpoint) Parse(validator StructValidator) error {
 	return nil
 }
 
-var log_levels = map[string]zapcore.Level{
-	"DEBUG":  zapcore.DebugLevel,
-	"INFO":   zapcore.InfoLevel,
-	"WARN":   zapcore.WarnLevel,
-	"ERROR":  zapcore.ErrorLevel,
-	"DPANIC": zapcore.DPanicLevel,
-	"PANIC":  zapcore.PanicLevel,
-	"FATAL":  zapcore.FatalLevel,
-}
-
 type Config struct {
 	LogLevel    string      `json:"log-level"`
 	UserAgent   string      `json:"user-agent"`
@@ -349,13 +334,21 @@ type Config struct {
 	Retry       uint        `json:"retry"`
 	TLSVerify   bool        `json:"tls-verify"`
 	Endpoints   []*Endpoint `json:"endpoints"`
-
-	_cached_log_level zapcore.Level
 }
 
-func (this *Config) GetLogLevel() (zapcore.Level, bool) {
-	l, ok := log_levels[strings.ToUpper(this.LogLevel)]
-	return l, ok
+func (this *Config) GetLogLevel() (slog.Level, bool) {
+	switch strings.ToUpper(this.LogLevel) {
+	case "DEBUG":
+		return slog.LevelDebug, true
+	case "INFO":
+		return slog.LevelInfo, true
+	case "WARN":
+		return slog.LevelWarn, true
+	case "ERROR":
+		return slog.LevelError, true
+	default:
+		return 0, false
+	}
 }
 
 func (this *Config) init() error {

@@ -3,18 +3,29 @@
 
 package core
 
-/*
-#include "windows_api.h"
-*/
-import "C"
-
 import (
 	"fmt"
+	"runtime"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
+
+type system_time struct {
+	Year         uint16
+	Month        uint16
+	DayOfWeek    uint16
+	Day          uint16
+	Hour         uint16
+	Minute       uint16
+	Second       uint16
+	Milliseconds uint16
+}
+
+var set_system_time_proc = syscall.NewLazyDLL("kernel32.dll").NewProc("SetSystemTime")
 
 func IsRTCUTC() (bool, error) {
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\TimeZoneInformation`, registry.QUERY_VALUE)
@@ -53,19 +64,23 @@ func SetTime(t *time.Time) error {
 		return fmt.Errorf("set system time: year %d is outside the SYSTEMTIME range", year)
 	}
 
-	var system_time C.SYSTEMTIME
-	system_time.wYear = C.WORD(utc.Year())
-	system_time.wMonth = C.WORD(utc.Month())
-	system_time.wDayOfWeek = C.WORD(utc.Weekday())
-	system_time.wDay = C.WORD(utc.Day())
-	system_time.wHour = C.WORD(utc.Hour())
-	system_time.wMinute = C.WORD(utc.Minute())
-	system_time.wSecond = C.WORD(utc.Second())
-	system_time.wMilliseconds = C.WORD(utc.Nanosecond() / int(time.Millisecond))
-
-	var last_error C.DWORD
-	if C.set_system_time(&system_time, &last_error) == 0 {
-		return fmt.Errorf("SetSystemTime failed: %w", windows.Errno(last_error))
+	st := system_time{
+		Year:         uint16(utc.Year()),
+		Month:        uint16(utc.Month()),
+		DayOfWeek:    uint16(utc.Weekday()),
+		Day:          uint16(utc.Day()),
+		Hour:         uint16(utc.Hour()),
+		Minute:       uint16(utc.Minute()),
+		Second:       uint16(utc.Second()),
+		Milliseconds: uint16(utc.Nanosecond() / int(time.Millisecond)),
 	}
+	result, _, call_err := set_system_time_proc.Call(uintptr(unsafe.Pointer(&st)))
+	if result == 0 {
+		if errno, ok := call_err.(syscall.Errno); ok && errno != 0 {
+			return fmt.Errorf("SetSystemTime failed: %w", windows.Errno(errno))
+		}
+		return fmt.Errorf("SetSystemTime failed: %w", windows.ERROR_GEN_FAILURE)
+	}
+	runtime.KeepAlive(&st)
 	return nil
 }

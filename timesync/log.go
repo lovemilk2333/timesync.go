@@ -1,15 +1,18 @@
 package timesync
 
 import (
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	"log/slog"
+	"os"
 )
 
-var log_level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
+var log_level = &slog.LevelVar{}
 
-var logger = func() *zap.Logger {
-	config := zap.NewProductionConfig()
-	config.Level = log_level
-	instance, _ := config.Build()
-	return instance
-}()
+var logger = slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: log_level}))
+
+func init() {
+	log_level.Set(slog.LevelInfo)
+}
+
+func sync_logger() error {
+	return os.Stderr.Sync()
+}

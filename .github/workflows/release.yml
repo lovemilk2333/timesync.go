@@ -34,6 +34,8 @@ jobs:
                   echo "${GO_LEGACY_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --status
                   tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
                   echo "GO=$RUNNER_TEMP/go-legacy-win7/bin/go" >> "$GITHUB_ENV"
+                  echo "GOBIN=$RUNNER_TEMP/go-legacy-win7/bin" >> "$GITHUB_ENV"
+                  echo "$RUNNER_TEMP/go-legacy-win7/bin" >> "$GITHUB_PATH"
                   "$RUNNER_TEMP/go-legacy-win7/bin/go" version
 
             - name: Install Windows cross compiler

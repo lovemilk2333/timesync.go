@@ -65,21 +65,21 @@ func load_config() *Config {
 // fetch_endpoint_time queries one endpoint and compensates for request latency
 // by adding half the time from obtaining a TCP connection to the first response
 // byte. For a reused connection, obtaining the connection is the start point.
-type http_doer interface {
+type HttpDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-func fetch_endpoint_time(client http_doer, config *Config, endpoint *Endpoint) (time.Time, error) {
+func fetch_endpoint_time(client HttpDoer, config *Config, endpoint *Endpoint) (time.Time, time.Duration, error) {
 	_, get_time, err := endpoint.GetTypePath()
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, 0, err
 	}
 
 	var last_err error
 	for attempt := uint(0); attempt <= config.Retry; attempt++ {
 		request, err := http.NewRequest(string(endpoint.Method), endpoint.URL.String(), nil)
 		if err != nil {
-			return time.Time{}, err
+			return time.Time{}, 0, err
 		}
 		request.Header.Set("User-Agent", config.UserAgent)
 
@@ -149,9 +149,11 @@ func fetch_endpoint_time(client http_doer, config *Config, endpoint *Endpoint) (
 		if latency_start.IsZero() || latency_end.IsZero() || latency_end.Before(latency_start) {
 			latency_start, latency_end = started, response_received_at
 		}
-		return server_time.Add(latency_end.Sub(latency_start) / 2), nil
+
+		rtt := latency_end.Sub(latency_start)
+		return server_time.Add(rtt / 2), rtt, nil
 	}
-	return time.Time{}, last_err
+	return time.Time{}, 0, last_err
 }
 
 func sync_time(config *Config, set_time func(*time.Time) error) error {
@@ -170,13 +172,13 @@ func new_http_client(config *Config) *http.Client {
 	return &http.Client{Timeout: config.Timeout.Duration, Transport: transport}
 }
 
-func sync_time_with_client(config *Config, client http_doer, set_time func(*time.Time) error) error {
+func sync_time_with_client(config *Config, client HttpDoer, set_time func(*time.Time) error) error {
 	if len(config.Endpoints) == 0 {
 		return fmt.Errorf("no time endpoints configured")
 	}
 	for _, endpoint := range config.Endpoints {
 		logger.Info("time endpoint start to sync", slog.String("url", endpoint.OriginalURL))
-		server_time, err := fetch_endpoint_time(client, config, endpoint)
+		server_time, rtt, err := fetch_endpoint_time(client, config, endpoint)
 		if err != nil {
 			logger.Warn("time endpoint failed", slog.String("url", endpoint.OriginalURL), slog.Any("error", err))
 			continue
@@ -185,7 +187,7 @@ func sync_time_with_client(config *Config, client http_doer, set_time func(*time
 		if err := set_time(&server_time); err != nil {
 			return fmt.Errorf("set system time: %w", err)
 		}
-		logger.Info("system time synchronized", slog.String("url", endpoint.OriginalURL), slog.Time("time", server_time))
+		logger.Info("system time synchronized", slog.String("url", endpoint.OriginalURL), slog.Time("time", server_time), slog.String("delay_error", "±"+(rtt/2).String()))
 		return nil
 	}
 	return fmt.Errorf("all %d time endpoints failed", len(config.Endpoints))

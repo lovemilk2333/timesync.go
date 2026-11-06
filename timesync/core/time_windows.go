@@ -6,6 +6,7 @@ package core
 import (
 	"fmt"
 	"runtime"
+	"structs"
 	"syscall"
 	"time"
 	"unsafe"
@@ -15,6 +16,8 @@ import (
 )
 
 type system_time struct {
+	_ structs.HostLayout
+
 	Year         uint16
 	Month        uint16
 	DayOfWeek    uint16
@@ -50,7 +53,7 @@ func IsRTCUTC() (bool, error) {
 
 // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-setsystemtime
 /*
-set windows time from `t`. RTC to local timezone if `local_timezone`
+set windows time from `t`
 */
 func SetTime(t *time.Time) error {
 	if t == nil {

@@ -138,7 +138,7 @@ func TestFetchEndpointTimeTextTimestamp(t *testing.T) {
 	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "timesync-test", MaxRespSize: 64, Retry: 0}
 	ep := new_test_endpoint(t, "https://time.example/test", "text", EndpointFormatTS, time.Millisecond)
 
-	got, err := fetch_endpoint_time(client, config, ep)
+	got, _, err := fetch_endpoint_time(client, config, ep)
 	if err != nil {
 		t.Fatalf("fetch_endpoint_time() error = %v", err)
 	}
@@ -154,7 +154,7 @@ func TestFetchEndpointTimeRejectsOversizedBody(t *testing.T) {
 	})}
 	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "test", MaxRespSize: 4, Retry: 0}
 	ep := new_test_endpoint(t, "https://time.example/test", "text", EndpointFormatTS, time.Millisecond)
-	if _, err := fetch_endpoint_time(client, config, ep); err == nil {
+	if _, _, err := fetch_endpoint_time(client, config, ep); err == nil {
 		t.Fatal("fetch_endpoint_time() expected oversized response error")
 	}
 }

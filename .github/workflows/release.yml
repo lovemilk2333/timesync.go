@@ -23,11 +23,18 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - name: Set up Go
-              uses: actions/setup-go@v5
-              with:
-                  go-version-file: "go.mod"
-                  cache: true
+            - name: Install Go with legacy Windows support
+              env:
+                  GO_LEGACY_VERSION: 1.27.3-1
+                  GO_LEGACY_SHA256: 069ceddac4917c528be492e560bb71bcf5c8ed5ff5d952ce1c8519e9b169228e
+              run: |
+                  archive="go-legacy-win7-${GO_LEGACY_VERSION}.linux_amd64.tar.gz"
+                  url="https://github.com/thongtech/go-legacy-win7/releases/download/v${GO_LEGACY_VERSION}/${archive}"
+                  curl --fail --location --retry 3 "$url" --output "$RUNNER_TEMP/$archive"
+                  echo "${GO_LEGACY_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --status
+                  tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+                  echo "GO=$RUNNER_TEMP/go-legacy-win7/bin/go" >> "$GITHUB_ENV"
+                  "$RUNNER_TEMP/go-legacy-win7/bin/go" version
 
             - name: Install Windows cross compiler
               run: |

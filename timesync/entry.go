@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"os"
-	"sort"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -62,7 +63,8 @@ func load_config() *Config {
 }
 
 // fetch_endpoint_time queries one endpoint and compensates for request latency
-// by using the request midpoint as the local observation time.
+// by adding half the time from obtaining a TCP connection to the first response
+// byte. For a reused connection, obtaining the connection is the start point.
 type http_doer interface {
 	Do(*http.Request) (*http.Response, error)
 }
@@ -81,15 +83,37 @@ func fetch_endpoint_time(client http_doer, config *Config, endpoint *Endpoint) (
 		}
 		request.Header.Set("User-Agent", config.UserAgent)
 
+		var trace_mu sync.Mutex
+		var tcp_connected_at, connection_at, first_byte_at time.Time
+		trace := &httptrace.ClientTrace{
+			ConnectDone: func(_, _ string, err error) {
+				if err == nil {
+					trace_mu.Lock()
+					tcp_connected_at = time.Now()
+					trace_mu.Unlock()
+				}
+			},
+			GotConn: func(httptrace.GotConnInfo) {
+				trace_mu.Lock()
+				connection_at = time.Now()
+				trace_mu.Unlock()
+			},
+			GotFirstResponseByte: func() {
+				trace_mu.Lock()
+				first_byte_at = time.Now()
+				trace_mu.Unlock()
+			},
+		}
+		request = request.WithContext(httptrace.WithClientTrace(request.Context(), trace))
 		started := time.Now()
 		response, err := client.Do(request)
 		if err != nil {
 			last_err = err
 			continue
 		}
+		response_received_at := time.Now()
 		body, read_err := io.ReadAll(io.LimitReader(response.Body, int64(config.MaxRespSize)+1))
 		close_err := response.Body.Close()
-		finished := time.Now()
 
 		if read_err != nil {
 			last_err = read_err
@@ -113,18 +137,21 @@ func fetch_endpoint_time(client http_doer, config *Config, endpoint *Endpoint) (
 			last_err = err
 			continue
 		}
-		return server_time.Add(finished.Sub(started) / 2), nil
+		trace_mu.Lock()
+		latency_start, latency_end := tcp_connected_at, first_byte_at
+		if latency_start.IsZero() {
+			// A reused connection has no ConnectDone event.
+			latency_start = connection_at
+		}
+		trace_mu.Unlock()
+		// Real http.Transport calls both trace hooks. A custom RoundTripper may
+		// not; retain a useful fallback based on time until response headers arrive.
+		if latency_start.IsZero() || latency_end.IsZero() || latency_end.Before(latency_start) {
+			latency_start, latency_end = started, response_received_at
+		}
+		return server_time.Add(latency_end.Sub(latency_start) / 2), nil
 	}
 	return time.Time{}, last_err
-}
-
-func median_time(times []time.Time) time.Time {
-	sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
-	middle := len(times) / 2
-	if len(times)%2 == 1 {
-		return times[middle]
-	}
-	return times[middle-1].Add(times[middle].Sub(times[middle-1]) / 2)
 }
 
 func sync_time(config *Config, set_time func(*time.Time) error) error {
@@ -144,25 +171,51 @@ func new_http_client(config *Config) *http.Client {
 }
 
 func sync_time_with_client(config *Config, client http_doer, set_time func(*time.Time) error) error {
-	results := make([]time.Time, 0, len(config.Endpoints))
+	if len(config.Endpoints) == 0 {
+		return fmt.Errorf("no time endpoints configured")
+	}
 	for _, endpoint := range config.Endpoints {
+		logger.Info("time endpoint start to sync", zap.String("url", endpoint.OriginalURL))
 		server_time, err := fetch_endpoint_time(client, config, endpoint)
 		if err != nil {
 			logger.Warn("time endpoint failed", zap.String("url", endpoint.OriginalURL), zap.Error(err))
 			continue
 		}
 		logger.Debug("time endpoint returned a time", zap.String("url", endpoint.OriginalURL), zap.Time("time", server_time))
-		results = append(results, server_time)
+		if err := set_time(&server_time); err != nil {
+			return fmt.Errorf("set system time: %w", err)
+		}
+		logger.Info("system time synchronized", zap.String("url", endpoint.OriginalURL), zap.Time("time", server_time))
+		return nil
 	}
-	if len(results) == 0 {
-		return fmt.Errorf("all %d time endpoints failed", len(config.Endpoints))
+	return fmt.Errorf("all %d time endpoints failed", len(config.Endpoints))
+}
+
+func wait_enter_exit(timeout time.Duration) {
+	remaining := int(timeout.Seconds())
+	// more then 1 second
+	if timeout > time.Second {
+		go func() {
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+
+			fmt.Printf("press enter to exit. will auto exit in %02d s...\r", remaining)
+			for range ticker.C {
+				remaining--
+				if remaining <= 0 {
+					break
+				}
+				fmt.Printf("press enter to exit. will auto exit in %02d s...\r", remaining)
+			}
+
+			os.Exit(0)
+		}()
+		fmt.Scanln()
+	} else {
+		time.Sleep(timeout)
 	}
-	chosen := median_time(results)
-	if err := set_time(&chosen); err != nil {
-		return fmt.Errorf("set system time: %w", err)
-	}
-	logger.Info("system time synchronized", zap.Time("time", chosen), zap.Int("successful_endpoints", len(results)))
-	return nil
+
+	os.Exit(0)
 }
 
 func Main() {
@@ -181,4 +234,6 @@ func Main() {
 	if err := sync_time(config, set_system_time); err != nil {
 		logger.Error("time synchronization failed", zap.Error(err))
 	}
+
+	wait_enter_exit(time.Second * 7)
 }

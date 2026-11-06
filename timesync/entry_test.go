@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,6 +123,15 @@ func TestFetchEndpointTimeTextTimestamp(t *testing.T) {
 		if got := r.Header.Get("User-Agent"); got != "timesync-test" {
 			t.Errorf("User-Agent = %q, want timesync-test", got)
 		}
+		trace := httptrace.ContextClientTrace(r.Context())
+		time.Sleep(20 * time.Millisecond) // DNS/TCP setup is before ConnectDone.
+		if trace != nil && trace.ConnectDone != nil {
+			trace.ConnectDone("tcp", "time.example:443", nil)
+		}
+		time.Sleep(20 * time.Millisecond)
+		if trace != nil && trace.GotFirstResponseByte != nil {
+			trace.GotFirstResponseByte()
+		}
 		return response(http.StatusOK, "1740000000000"), nil
 	})
 	client := &http.Client{Transport: transport, Timeout: time.Second}
@@ -133,8 +143,8 @@ func TestFetchEndpointTimeTextTimestamp(t *testing.T) {
 		t.Fatalf("fetch_endpoint_time() error = %v", err)
 	}
 	want := time.Unix(1740000000, 0)
-	if delta := got.Sub(want); delta < 0 || delta > 100*time.Millisecond {
-		t.Errorf("fetched time = %v, want near %v (delta %v)", got, want, delta)
+	if delta := got.Sub(want); delta < 5*time.Millisecond || delta > 100*time.Millisecond {
+		t.Errorf("fetched time = %v, want about half the 20ms connection-to-first-byte delay after %v (delta %v)", got, want, delta)
 	}
 }
 
@@ -149,21 +159,26 @@ func TestFetchEndpointTimeRejectsOversizedBody(t *testing.T) {
 	}
 }
 
-func TestSyncTimeUsesMedianEndpointTime(t *testing.T) {
-	server_times := []time.Time{
-		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, time.January, 1, 0, 0, 2, 0, time.UTC),
-		time.Date(2035, time.January, 1, 0, 0, 0, 0, time.UTC), // outlier
-	}
-	responses := make(map[string]string, len(server_times))
+func TestSyncTimeStopsAfterFirstSuccessfulEndpoint(t *testing.T) {
+	first_successful_time := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
 	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "test", MaxRespSize: 128, Retry: 0}
-	for i, server_time := range server_times {
-		url := fmt.Sprintf("https://time-%d.example/test", i)
-		responses[url] = server_time.Format(time.RFC3339Nano)
-		config.Endpoints = append(config.Endpoints, new_test_endpoint(t, url, "text", EndpointFormatISO, 0))
+	config.Endpoints = []*Endpoint{
+		new_test_endpoint(t, "https://unavailable.example/time", "text", EndpointFormatISO, 0),
+		new_test_endpoint(t, "https://first-success.example/time", "text", EndpointFormatISO, 0),
+		new_test_endpoint(t, "https://must-not-run.example/time", "text", EndpointFormatISO, 0),
 	}
+	var calls []string
 	client := &http.Client{Transport: round_trip_func(func(r *http.Request) (*http.Response, error) {
-		return response(http.StatusOK, responses[r.URL.String()]), nil
+		calls = append(calls, r.URL.Host)
+		switch r.URL.Host {
+		case "unavailable.example":
+			return response(http.StatusServiceUnavailable, ""), nil
+		case "first-success.example":
+			return response(http.StatusOK, first_successful_time.Format(time.RFC3339Nano)), nil
+		default:
+			t.Errorf("unexpected endpoint request: %s", r.URL)
+			return nil, fmt.Errorf("unexpected endpoint request: %s", r.URL)
+		}
 	})}
 
 	var got time.Time
@@ -173,8 +188,11 @@ func TestSyncTimeUsesMedianEndpointTime(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("sync_time_with_client() error = %v", err)
 	}
-	want := server_times[1]
-	if delta := got.Sub(want); delta < 0 || delta > 100*time.Millisecond {
-		t.Errorf("selected time = %v, want near median %v (delta %v)", got, want, delta)
+	if delta := got.Sub(first_successful_time); delta < 0 || delta > 100*time.Millisecond {
+		t.Errorf("selected time = %v, want near first successful endpoint time %v (delta %v)", got, first_successful_time, delta)
+	}
+	want_calls := []string{"unavailable.example", "first-success.example"}
+	if fmt.Sprint(calls) != fmt.Sprint(want_calls) {
+		t.Errorf("endpoint calls = %v, want %v", calls, want_calls)
 	}
 }

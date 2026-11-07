@@ -287,6 +287,10 @@ func (this *Endpoint) init_format() error {
 }
 
 func (this *Endpoint) init() error {
+	if this == nil {
+		return fmt.Errorf("nil endpoint found")
+	}
+
 	if parsed_url, err := url.Parse(this.OriginalURL); err != nil {
 		return err
 	} else {
@@ -309,17 +313,11 @@ func (this *Endpoint) init() error {
 }
 
 func (this *Endpoint) Parse(validator StructValidator) error {
-	// Resolve the default before conditional validation: an omitted format
-	// defaults to timestamps, which require precision.
-	if err := this.init_format(); err != nil {
+	if err := this.init(); err != nil {
 		return err
 	}
 
 	if err := validator(this); err != nil {
-		return err
-	}
-
-	if err := this.init(); err != nil {
 		return err
 	}
 
@@ -394,9 +392,6 @@ func (this *Config) Parse(validator StructValidator) error {
 		return err
 	}
 	for i, endpoint := range this.Endpoints {
-		if endpoint == nil {
-			return fmt.Errorf("endpoint %d is null", i)
-		}
 		if err := endpoint.Parse(validator); err != nil {
 			return fmt.Errorf("endpoint %d: %w", i, err)
 		}

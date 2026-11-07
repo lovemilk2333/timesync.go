@@ -37,14 +37,14 @@ func TestLoadConfigUsesWorkingDirectoryAndFallsBackWhenMissing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Marshal() error = %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, ConfigFile), config_data, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, CONFIG_FILE), config_data, 0o600); err != nil {
 			t.Fatalf("WriteFile() error = %v", err)
 		}
 		if err := os.Chdir(dir); err != nil {
 			t.Fatalf("Chdir() error = %v", err)
 		}
 
-		config := load_config()
+		config, _ := load_config()
 		if config == nil {
 			t.Fatal("load_config() returned nil")
 		}
@@ -59,7 +59,7 @@ func TestLoadConfigUsesWorkingDirectoryAndFallsBackWhenMissing(t *testing.T) {
 			t.Fatalf("Chdir() error = %v", err)
 		}
 
-		config := load_config()
+		config, _ := load_config()
 		if config == nil {
 			t.Fatal("load_config() returned nil")
 		}

@@ -20,46 +20,46 @@ var default_config_data []byte
 
 var v = NewValidator()
 
-const ConfigFile = "config.json"
+const CONFIG_FILE = "config.json"
 
-func load_config() *Config {
+func load_config() (*Config, bool) {
 	var default_config Config
 	if err := json.Unmarshal(default_config_data, &default_config); err != nil {
 		logger.Error("failed to unmarshal default config json", slog.Any("error", err))
-		return nil
+		return nil, false
 	}
 	if err := default_config.Parse(v); err != nil {
 		logger.Error("failed to check default config json", slog.Any("error", err))
-		return nil
+		return nil, false
 	}
 
-	file, err := os.Open(ConfigFile)
+	file, err := os.Open(CONFIG_FILE)
 	if err != nil {
-		logger.Info("using embedded default config", slog.String("file", ConfigFile))
-		return &default_config
+		logger.Info("using embedded default config", slog.String("file", CONFIG_FILE))
+		return &default_config, false
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, MaxConfigSize+1))
 	if err != nil {
 		logger.Error("failed to read config file", slog.Any("error", err))
-		return &default_config
+		return &default_config, false
 	}
 	if int64(len(data)) > MaxConfigSize {
 		logger.Error("config file size exceeds limit", slog.Int64("max_size", MaxConfigSize))
-		return &default_config
+		return &default_config, false
 	}
 
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
 		logger.Error("failed to unmarshal config json", slog.Any("error", err))
-		return &default_config
+		return &default_config, false
 	}
 	if err := config.Parse(v); err != nil {
 		logger.Error("failed to check config json", slog.Any("error", err))
-		return &default_config
+		return &default_config, false
 	}
-	return &config
+	return &config, true
 }
 
 // fetch_endpoint_time queries one endpoint and compensates for request latency
@@ -173,9 +173,6 @@ func new_http_client(config *Config) *http.Client {
 }
 
 func sync_time_with_client(config *Config, client HttpDoer, set_time func(*time.Time) error) error {
-	if len(config.Endpoints) == 0 {
-		return fmt.Errorf("no time endpoints configured")
-	}
 	for _, endpoint := range config.Endpoints {
 		logger.Info("time endpoint start to sync", slog.String("url", endpoint.OriginalURL))
 		server_time, rtt, err := fetch_endpoint_time(client, config, endpoint)
@@ -187,16 +184,18 @@ func sync_time_with_client(config *Config, client HttpDoer, set_time func(*time.
 		if err := set_time(&server_time); err != nil {
 			return fmt.Errorf("set system time: %w", err)
 		}
-		logger.Info("system time synchronized", slog.String("url", endpoint.OriginalURL), slog.Time("time", server_time), slog.String("delay_error", "±"+(rtt/2).String()))
+		logger.Info("system time synchronized", slog.String("url", endpoint.OriginalURL), slog.Time("time", server_time), slog.String("rtt", rtt.String()))
 		return nil
 	}
 	return fmt.Errorf("all %d time endpoints failed", len(config.Endpoints))
 }
 
 func wait_enter_exit(timeout time.Duration) {
-	remaining := int(timeout.Seconds())
 	// more then 1 second
 	if timeout > time.Second {
+		total_seconds := timeout.Seconds()
+		remaining := int(total_seconds)
+		left := time.Duration(total_seconds - float64(remaining))
 		go func() {
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
@@ -209,6 +208,8 @@ func wait_enter_exit(timeout time.Duration) {
 				}
 				fmt.Printf("press enter to exit. will auto exit in %02d s...\r", remaining)
 			}
+			fmt.Printf("press enter to exit. will auto exit in %02d s...\r", remaining)
+			time.Sleep(left)
 
 			os.Exit(0)
 		}()
@@ -225,17 +226,26 @@ func Main() {
 		logger.Debug("loading config from current working directory", slog.String("dir", current_dir))
 	}
 
-	config := load_config()
+	config, loaded := load_config()
 	if config == nil {
-		return
+		logger.Error("none of configs available")
+		os.Exit(1)
 	}
+
+	if loaded {
+		logger.Info("use config file config", slog.String("file", CONFIG_FILE))
+	} else {
+		logger.Info("use default config")
+	}
+
 	if level, ok := config.GetLogLevel(); ok {
 		log_level.Set(level)
 	}
 	defer sync_logger()
 	if err := sync_time(config, set_system_time); err != nil {
 		logger.Error("time synchronization failed", slog.Any("error", err))
+		wait_enter_exit(time.Second * 10)
+	} else {
+		wait_enter_exit(time.Second * 5)
 	}
-
-	wait_enter_exit(time.Second * 7)
 }

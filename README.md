@@ -21,7 +21,7 @@ make build-win
 make build-linux
 ```
 
-> If you want build for Windows 7 or older OS, check <https://github.com/thongtech/go-legacy-win7> to get the Windows7-compatible Go compiler
+> If you want build for Windows 7 or earlier OS, check <https://github.com/thongtech/go-legacy-win7> to get the Windows7-compatible Go compiler
 
 The output file is `bin/timesync-windows-amd64.exe` or `bin/timesync-linux-amd64`, or set `GOARCH=<arch>` to change the executable file arch
 

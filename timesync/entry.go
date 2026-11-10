@@ -40,13 +40,13 @@ func load_config() (*Config, bool) {
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(io.LimitReader(file, MaxConfigSize+1))
+	data, err := io.ReadAll(io.LimitReader(file, MAX_CONFIG_SIZE+1))
 	if err != nil {
 		logger.Error("failed to read config file", slog.Any("error", err))
 		return &default_config, false
 	}
-	if int64(len(data)) > MaxConfigSize {
-		logger.Error("config file size exceeds limit", slog.Int64("max_size", MaxConfigSize))
+	if int64(len(data)) > MAX_CONFIG_SIZE {
+		logger.Error("config file size exceeds limit", slog.Int64("max_size", MAX_CONFIG_SIZE))
 		return &default_config, false
 	}
 
@@ -76,7 +76,7 @@ func fetch_endpoint_time(client HttpDoer, config *Config, endpoint *Endpoint) (t
 	}
 
 	var last_err error
-	for attempt := uint(0); attempt <= config.Retry; attempt++ {
+	for attempt := uint(0); attempt < config.Retry; attempt++ {
 		request, err := http.NewRequest(string(endpoint.Method), endpoint.URL.String(), nil)
 		if err != nil {
 			return time.Time{}, 0, err
@@ -174,6 +174,9 @@ func new_http_client(config *Config) *http.Client {
 
 func sync_time_with_client(config *Config, client HttpDoer, set_time func(*time.Time) error) error {
 	for _, endpoint := range config.Endpoints {
+		if endpoint.Precision.Duration > MAX_SUGGESTED_PRECISION {
+			logger.Warn("endpoint precision too low, time sync may not be accurate", slog.String("url", endpoint.OriginalURL))
+		}
 		logger.Info("time endpoint start to sync", slog.String("url", endpoint.OriginalURL))
 		server_time, rtt, err := fetch_endpoint_time(client, config, endpoint)
 		if err != nil {

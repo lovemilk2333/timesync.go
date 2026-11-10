@@ -53,7 +53,7 @@ func TestEndpointParse(t *testing.T) {
 				Type:        "text",
 				Precision:   valid_precision,
 			},
-			want_type: EndpointTypeText,
+			want_type: ENDPOINT_TYPE_TEXT,
 		},
 		{
 			name: "text type with ISO format and value",
@@ -61,9 +61,9 @@ func TestEndpointParse(t *testing.T) {
 				OriginalURL: "https://example.com/time",
 				Type:        "text",
 				Precision:   valid_precision,
-				Format:      EndpointFormatISO,
+				Format:      ENDPOINT_FORMAT_ISO,
 			},
-			want_type: EndpointTypeText,
+			want_type: ENDPOINT_TYPE_TEXT,
 			want_body: []byte(iso_value),
 			want_time: &iso_time,
 		},
@@ -74,7 +74,7 @@ func TestEndpointParse(t *testing.T) {
 				Type:        "json:timestamp",
 				Precision:   valid_precision,
 			},
-			want_type:      EndpointTypeJSON,
+			want_type:      ENDPOINT_TYPE_JSON,
 			want_path_segs: []string{"timestamp"},
 		},
 		{
@@ -84,7 +84,7 @@ func TestEndpointParse(t *testing.T) {
 				Type:        "json:data.timestamp",
 				Precision:   valid_precision,
 			},
-			want_type:      EndpointTypeJSON,
+			want_type:      ENDPOINT_TYPE_JSON,
 			want_path_segs: []string{"data", "timestamp"},
 		},
 		{
@@ -94,7 +94,7 @@ func TestEndpointParse(t *testing.T) {
 				Type:        "json:data..with..dots.timestamp",
 				Precision:   valid_precision,
 			},
-			want_type:      EndpointTypeJSON,
+			want_type:      ENDPOINT_TYPE_JSON,
 			want_path_segs: []string{"data.with.dots", "timestamp"},
 		},
 		{
@@ -104,7 +104,7 @@ func TestEndpointParse(t *testing.T) {
 				Type:        "json :data.timestamp",
 				Precision:   valid_precision,
 			},
-			want_type:      EndpointTypeJSON,
+			want_type:      ENDPOINT_TYPE_JSON,
 			want_path_segs: []string{"data", "timestamp"},
 		},
 		{
@@ -113,9 +113,9 @@ func TestEndpointParse(t *testing.T) {
 				OriginalURL: "https://example.com/data",
 				Type:        "json:time",
 				Precision:   valid_precision,
-				Format:      EndpointFormatISO,
+				Format:      ENDPOINT_FORMAT_ISO,
 			},
-			want_type:      EndpointTypeJSON,
+			want_type:      ENDPOINT_TYPE_JSON,
 			want_path_segs: []string{"time"},
 		},
 		{
@@ -125,7 +125,7 @@ func TestEndpointParse(t *testing.T) {
 				Type:        `regex:[0-9]+`,
 				Precision:   valid_precision,
 			},
-			want_type: EndpointTypeRegex,
+			want_type: ENDPOINT_TYPE_REGEX,
 		},
 		{
 			name: "text type must not carry a path",
@@ -236,9 +236,9 @@ func TestEndpointParse(t *testing.T) {
 			endpoint: &Endpoint{
 				OriginalURL: "https://example.com/time",
 				Type:        "text",
-				Format:      EndpointFormatISO,
+				Format:      ENDPOINT_FORMAT_ISO,
 			},
-			want_type: EndpointTypeText,
+			want_type: ENDPOINT_TYPE_TEXT,
 		},
 	}
 
@@ -275,7 +275,7 @@ func TestEndpointParse(t *testing.T) {
 			var body []byte
 			var want_time *time.Time
 			if len(tt.want_path_segs) > 0 {
-				if tt.endpoint.Format == EndpointFormatISO {
+				if tt.endpoint.Format == ENDPOINT_FORMAT_ISO {
 					body = build_json_body(tt.want_path_segs, iso_value)
 					wt := iso_time
 					want_time = &wt
@@ -318,7 +318,7 @@ func TestParseEndpointTypeTimestampValueTypes(t *testing.T) {
 			type_str:  "text",
 			body:      []byte("1740000000000"),
 			precision: time.Millisecond,
-			format:    EndpointFormatTS,
+			format:    ENDPOINT_FORMAT_TS,
 			want:      time_ptr(time.Unix(1740000000, 0)),
 		},
 		{
@@ -326,7 +326,7 @@ func TestParseEndpointTypeTimestampValueTypes(t *testing.T) {
 			type_str:  "text",
 			body:      []byte("1740000000000.25"),
 			precision: time.Millisecond,
-			format:    EndpointFormatTS,
+			format:    ENDPOINT_FORMAT_TS,
 			want:      time_ptr(time.Unix(0, int64(1740000000000.25*float64(time.Millisecond)))),
 		},
 		{
@@ -334,7 +334,7 @@ func TestParseEndpointTypeTimestampValueTypes(t *testing.T) {
 			type_str:  "json",
 			body:      []byte(`{"timestamp":1740000000000}`),
 			precision: time.Millisecond,
-			format:    EndpointFormatTS,
+			format:    ENDPOINT_FORMAT_TS,
 			want:      time_ptr(time.Unix(1740000000, 0)),
 		},
 		{
@@ -342,7 +342,7 @@ func TestParseEndpointTypeTimestampValueTypes(t *testing.T) {
 			type_str:  "json",
 			body:      []byte(`{"timestamp":1740000000000.25}`),
 			precision: time.Millisecond,
-			format:    EndpointFormatTS,
+			format:    ENDPOINT_FORMAT_TS,
 			want:      time_ptr(time.Unix(0, int64(1740000000000.25*float64(time.Millisecond)))),
 		},
 		{
@@ -350,7 +350,7 @@ func TestParseEndpointTypeTimestampValueTypes(t *testing.T) {
 			type_str:  "json",
 			body:      []byte(`{"timestamp":"1740000000000"}`),
 			precision: time.Millisecond,
-			format:    EndpointFormatTS,
+			format:    ENDPOINT_FORMAT_TS,
 			want:      time_ptr(time.Unix(1740000000, 0)),
 		},
 		{
@@ -358,7 +358,7 @@ func TestParseEndpointTypeTimestampValueTypes(t *testing.T) {
 			type_str:  "text",
 			body:      []byte("2025-02-19T21:20:00Z"),
 			precision: time.Millisecond,
-			format:    EndpointFormatISO,
+			format:    ENDPOINT_FORMAT_ISO,
 			want:      time_ptr(time.Date(2025, time.February, 19, 21, 20, 0, 0, time.UTC)),
 		},
 	}
@@ -410,26 +410,26 @@ func TestParseEndpointTypeRegex(t *testing.T) {
 		{
 			name:    "extracts ISO timestamp",
 			pattern: `[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z`,
-			format:  EndpointFormatISO,
+			format:  ENDPOINT_FORMAT_ISO,
 			want:    time.Date(2025, time.February, 19, 21, 20, 0, 0, time.UTC),
 		},
 		{
 			name:      "extracts timestamp",
 			pattern:   `[0-9]+`,
-			format:    EndpointFormatTS,
+			format:    ENDPOINT_FORMAT_TS,
 			precision: time.Millisecond,
 			want:      time.Unix(0, 2025*int64(time.Millisecond)),
 		},
 		{
 			name:     "pattern starting with a dot is valid",
 			pattern:  `.+`,
-			format:   EndpointFormatISO,
+			format:   ENDPOINT_FORMAT_ISO,
 			want_err: true, // matches, but the captured text is not an ISO timestamp
 		},
 		{
 			name:     "empty pattern fails",
 			pattern:  "",
-			format:   EndpointFormatISO,
+			format:   ENDPOINT_FORMAT_ISO,
 			want_err: true,
 		},
 	}
@@ -437,7 +437,7 @@ func TestParseEndpointTypeRegex(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			endpoint := &Endpoint{Precision: Duration{Duration: tt.precision}, Format: tt.format}
-			getter, err := parse_endpoint_type(string(EndpointTypeRegex), tt.pattern)
+			getter, err := parse_endpoint_type(string(ENDPOINT_TYPE_REGEX), tt.pattern)
 			if tt.want_err && tt.pattern == "" {
 				if err == nil {
 					t.Fatal("parse_endpoint_type() expected an error for an empty pattern")
@@ -466,7 +466,7 @@ func TestParseEndpointTypeRegex(t *testing.T) {
 }
 
 func TestParseTimeWithFormatTrimsWhitespace(t *testing.T) {
-	iso, err := parse_time_with_format(" 2025-02-19T21:20:00Z\n", 0, EndpointFormatISO)
+	iso, err := parse_time_with_format(" 2025-02-19T21:20:00Z\n", 0, ENDPOINT_FORMAT_ISO)
 	if err != nil {
 		t.Fatalf("parse_time_with_format() ISO error = %v", err)
 	}
@@ -474,7 +474,7 @@ func TestParseTimeWithFormatTrimsWhitespace(t *testing.T) {
 		t.Errorf("ISO time = %v, want %v", iso, want)
 	}
 
-	ts, err := parse_time_with_format(" 2025 \n", time.Millisecond, EndpointFormatTS)
+	ts, err := parse_time_with_format(" 2025 \n", time.Millisecond, ENDPOINT_FORMAT_TS)
 	if err != nil {
 		t.Fatalf("parse_time_with_format() timestamp error = %v", err)
 	}
@@ -484,11 +484,11 @@ func TestParseTimeWithFormatTrimsWhitespace(t *testing.T) {
 }
 
 func TestParseTypeWithColonInPath(t *testing.T) {
-	getter, err := parse_endpoint_type(string(EndpointTypeJSON), "time:utc")
+	getter, err := parse_endpoint_type(string(ENDPOINT_TYPE_JSON), "time:utc")
 	if err != nil {
 		t.Fatalf("parse_endpoint_type() error = %v", err)
 	}
-	endpoint := &Endpoint{Precision: valid_precision, Format: EndpointFormatTS}
+	endpoint := &Endpoint{Precision: valid_precision, Format: ENDPOINT_FORMAT_TS}
 	body := build_json_body([]string{"time:utc"}, float64(1000))
 	got, err := getter(endpoint, body)
 	if err != nil {
@@ -506,7 +506,7 @@ func TestParseTypeWithColonInPath(t *testing.T) {
 	if err := ep.Parse(NewValidator()); err != nil {
 		t.Fatalf("Endpoint.Parse() error = %v", err)
 	}
-	if ended, _, err := ep.GetTypePath(); err != nil || ended != EndpointTypeJSON {
+	if ended, _, err := ep.GetTypePath(); err != nil || ended != ENDPOINT_TYPE_JSON {
 		t.Errorf("GetTypePath() = %v, %v; want json, nil", ended, err)
 	}
 }
@@ -529,8 +529,8 @@ func TestConfigParseDefaultsTimeoutAndUA(t *testing.T) {
 	}{
 		{
 			name:         "unspecified timeout",
-			want_timeout: DefaultTimeout,
-			want_ua:      DefaultUserAgent,
+			want_timeout: DEFAULT_TIMEOUT,
+			want_ua:      DEFAULT_USER_AGENT,
 		},
 		{
 			name:         "explicit timeout",

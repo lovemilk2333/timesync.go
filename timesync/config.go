@@ -25,19 +25,20 @@ func generate_ua() string {
 	)
 }
 
-const MaxConfigSize = 6 * 1024 // 6 MiB
-const MaxRespSize = 16 * 1024  // 16 KiB
-const MaxSuggestedPrecision = time.Minute
-const DefaultTimeout = 5 * time.Second
-const DefaultRetry = 2
+const MAX_CONFIG_SIZE = 6 * 1024 * 1024 // 6 MiB
+const MAX_RESP_SIZE = 16 * 1024         // 16 KiB
+const MAX_SUGGESTED_PRECISION = time.Minute
+const DEFAULT_TIMEOUT = 2500 * time.Millisecond
+const DEFAULT_RETRY = 2
+const DEFAULT_LOG_LEVEL = "INFO"
 
-var DefaultUserAgent = generate_ua()
+var DEFAULT_USER_AGENT = generate_ua()
 
-const EndpointTypeSeparator = ":"
-const EndpointTypeSeparatorLength = len(EndpointTypeSeparator)
+const ENDPOINT_TYPE_SEPARATOR = ":"
+const ENDPOINT_TYPE_SEPARATOR_LENGTH = len(ENDPOINT_TYPE_SEPARATOR)
 
-const EndpointJSONPathSeparator = '.'
-const EndpointJSONPathEscape = string(EndpointJSONPathSeparator) + string(EndpointJSONPathSeparator)
+const ENDPOINT_JSON_PATH_SEPARATOR = '.'
+const ENDPOINT_JSON_PATH_ESCAPE = string(ENDPOINT_JSON_PATH_SEPARATOR) + string(ENDPOINT_JSON_PATH_SEPARATOR)
 
 type EndpointMethod string
 
@@ -56,21 +57,21 @@ type EndpointType string
 type EndpointPathGetter func(this *Endpoint, body []byte) (*time.Time, error)
 
 const (
-	EndpointTypeText  EndpointType = "text"
-	EndpointTypeJSON  EndpointType = "json"
-	EndpointTypeRegex EndpointType = "regex"
+	ENDPOINT_TYPE_TEXT  EndpointType = "text"
+	ENDPOINT_TYPE_JSON  EndpointType = "json"
+	ENDPOINT_TYPE_REGEX EndpointType = "regex"
 )
 
 type EndpointFormat string
 
 const (
-	EndpointFormatTS  EndpointFormat = "ts"
-	EndpointFormatISO EndpointFormat = "iso"
+	ENDPOINT_FORMAT_TS  EndpointFormat = "ts"
+	ENDPOINT_FORMAT_ISO EndpointFormat = "iso"
 )
 
 func parse_time_with_format(val any, precision time.Duration, format EndpointFormat) (*time.Time, error) {
 	switch format {
-	case EndpointFormatTS:
+	case ENDPOINT_FORMAT_TS:
 		var total_nano int64
 		switch typed_val := val.(type) {
 		case float64:
@@ -90,7 +91,7 @@ func parse_time_with_format(val any, precision time.Duration, format EndpointFor
 
 		t := time.Unix(0, total_nano)
 		return &t, nil
-	case EndpointFormatISO:
+	case ENDPOINT_FORMAT_ISO:
 		typed_val, ok := val.(string)
 		if !ok {
 			return nil, fmt.Errorf("invalid value type (expected `string`, got `%T`)", val)
@@ -131,24 +132,24 @@ func parse_json_path(p string) ([]string, error) {
 	segment := make([]byte, 0, len(p))
 
 	for i := 0; i < len(p); i++ {
-		if p[i] != EndpointJSONPathSeparator {
+		if p[i] != ENDPOINT_JSON_PATH_SEPARATOR {
 			segment = append(segment, p[i])
 			continue
 		}
-		if i+1 < len(p) && p[i+1] == EndpointJSONPathSeparator {
-			segment = append(segment, EndpointJSONPathSeparator)
+		if i+1 < len(p) && p[i+1] == ENDPOINT_JSON_PATH_SEPARATOR {
+			segment = append(segment, ENDPOINT_JSON_PATH_SEPARATOR)
 			i++
 			continue
 		}
 		if len(segment) == 0 {
-			return nil, fmt.Errorf("invalid endpoint type `%q`: path must not be empty or contain an empty segment", EndpointTypeJSON)
+			return nil, fmt.Errorf("invalid endpoint type `%q`: path must not be empty or contain an empty segment", ENDPOINT_TYPE_JSON)
 		}
 		path = append(path, string(segment))
 		segment = segment[:0]
 	}
 
 	if len(segment) == 0 {
-		return nil, fmt.Errorf("invalid endpoint type `%q`: path must not be empty or contain an empty segment", EndpointTypeJSON)
+		return nil, fmt.Errorf("invalid endpoint type `%q`: path must not be empty or contain an empty segment", ENDPOINT_TYPE_JSON)
 	}
 	path = append(path, string(segment))
 
@@ -157,14 +158,14 @@ func parse_json_path(p string) ([]string, error) {
 
 func parse_endpoint_type(t string, p string) (EndpointPathGetter, error) {
 	switch t {
-	case string(EndpointTypeText):
+	case string(ENDPOINT_TYPE_TEXT):
 		if len(p) > 0 {
-			return nil, fmt.Errorf("invalid endpoint type `%q`: path must be empty", EndpointTypeText)
+			return nil, fmt.Errorf("invalid endpoint type `%q`: path must be empty", ENDPOINT_TYPE_TEXT)
 		}
 		return func(this *Endpoint, body []byte) (*time.Time, error) {
 			return parse_time_with_format(string(body), this.Precision.Duration, this.Format)
 		}, nil
-	case string(EndpointTypeJSON):
+	case string(ENDPOINT_TYPE_JSON):
 		path, err := parse_json_path(p)
 		if err != nil {
 			return nil, err
@@ -183,9 +184,9 @@ func parse_endpoint_type(t string, p string) (EndpointPathGetter, error) {
 				return parse_time_with_format(val, this.Precision.Duration, this.Format)
 			}
 		}, nil
-	case string(EndpointTypeRegex):
+	case string(ENDPOINT_TYPE_REGEX):
 		if len(p) == 0 {
-			return nil, fmt.Errorf("invalid endpoint type `%q`: pattern must not be empty", EndpointTypeRegex)
+			return nil, fmt.Errorf("invalid endpoint type `%q`: pattern must not be empty", ENDPOINT_TYPE_REGEX)
 		}
 
 		re, err := regexp.Compile(p)
@@ -248,12 +249,12 @@ func (this *Endpoint) GetTypePath() (EndpointType, EndpointPathGetter, error) {
 	var endpoint_type string
 	var endpoint_path string = ""
 
-	sep_index := strings.Index(this.Type, EndpointTypeSeparator)
+	sep_index := strings.Index(this.Type, ENDPOINT_TYPE_SEPARATOR)
 	if sep_index == -1 {
 		endpoint_type = this.Type
 	} else {
 		// Split at the first separator so paths/patterns may contain colons.
-		endpoint_type, endpoint_path = strings.ReplaceAll(this.Type[:sep_index], " ", ""), this.Type[sep_index+EndpointTypeSeparatorLength:]
+		endpoint_type, endpoint_path = strings.ReplaceAll(this.Type[:sep_index], " ", ""), this.Type[sep_index+ENDPOINT_TYPE_SEPARATOR_LENGTH:]
 	}
 
 	pared_path, err := parse_endpoint_type(endpoint_type, endpoint_path)
@@ -284,15 +285,15 @@ func (this *Endpoint) init_method() error {
 
 func (this *Endpoint) init_format() error {
 	if len(this.Format) == 0 {
-		this.Format = EndpointFormatTS // default format
+		this.Format = ENDPOINT_FORMAT_TS // default format
 	}
 
 	switch this.Format {
-	case EndpointFormatTS:
+	case ENDPOINT_FORMAT_TS:
 		if this.Precision.Duration == 0 {
 			return fmt.Errorf("invalid endpoint format `%q`: precision cannot be `0`", this.Format)
 		}
-	case EndpointFormatISO:
+	case ENDPOINT_FORMAT_ISO:
 	default:
 		return fmt.Errorf("invalid endpoint format `%q`", this.Format)
 	}
@@ -365,33 +366,33 @@ func (this *Config) GetLogLevel() (slog.Level, bool) {
 
 func (this *Config) init() error {
 	if len(this.LogLevel) == 0 {
-		this.LogLevel = "INFO"
+		this.LogLevel = DEFAULT_LOG_LEVEL
 	}
 	if _, ok := this.GetLogLevel(); !ok {
 		return fmt.Errorf("no such log level `%s`", this.LogLevel)
 	}
 
 	if len(this.UserAgent) == 0 {
-		this.UserAgent = DefaultUserAgent
+		this.UserAgent = DEFAULT_USER_AGENT
 	}
 
 	if this.Timeout.Duration == 0 {
-		this.Timeout.Duration = DefaultTimeout
+		this.Timeout.Duration = DEFAULT_TIMEOUT
 	}
 	if this.MaxRespSize == 0 {
-		this.MaxRespSize = MaxRespSize
+		this.MaxRespSize = MAX_RESP_SIZE
 	}
 
 	if this.Retry == 0 {
-		this.Retry = DefaultRetry
+		this.Retry = DEFAULT_RETRY
 	}
 
 	if len(this.Endpoints) == 0 {
 		return fmt.Errorf("must have at least 1 endpoint")
 	}
 
-	if this.MaxRespSize > MaxRespSize {
-		this.MaxRespSize = MaxRespSize
+	if this.MaxRespSize > MAX_RESP_SIZE {
+		this.MaxRespSize = MAX_RESP_SIZE
 	}
 
 	return nil

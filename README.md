@@ -30,7 +30,7 @@ The output file is `bin/timesync-windows-amd64.exe` or `bin/timesync-linux-amd64
 
 ## Usage
 
-Run as Administrator on Windows or as root on Linux to set system clock time, or write a config `config.json` in the working directory. If it is absent or invalid, the embedded default config will be used
+Run as Administrator on Windows or as root on Linux to set system clock time. Write a config `config.json` in the working directory. If it is absent or invalid, the embedded default config will be used
 
 ## Config
 Max size of config file is 6 MiB

@@ -135,7 +135,7 @@ func TestFetchEndpointTimeTextTimestamp(t *testing.T) {
 		return response(http.StatusOK, "1740000000000"), nil
 	})
 	client := &http.Client{Transport: transport, Timeout: time.Second}
-	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "timesync-test", MaxRespSize: 64, Retry: 0}
+	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "timesync-test", MaxRespSize: 64, Retry: 1}
 	ep := new_test_endpoint(t, "https://time.example/test", "text", ENDPOINT_FORMAT_TS, time.Millisecond)
 
 	got, _, err := fetch_endpoint_time(client, config, ep)
@@ -152,7 +152,7 @@ func TestFetchEndpointTimeRejectsOversizedBody(t *testing.T) {
 	client := &http.Client{Transport: round_trip_func(func(*http.Request) (*http.Response, error) {
 		return response(http.StatusOK, "1740000000000"), nil
 	})}
-	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "test", MaxRespSize: 4, Retry: 0}
+	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "test", MaxRespSize: 4, Retry: 1}
 	ep := new_test_endpoint(t, "https://time.example/test", "text", ENDPOINT_FORMAT_TS, time.Millisecond)
 	if _, _, err := fetch_endpoint_time(client, config, ep); err == nil {
 		t.Fatal("fetch_endpoint_time() expected oversized response error")
@@ -161,7 +161,7 @@ func TestFetchEndpointTimeRejectsOversizedBody(t *testing.T) {
 
 func TestSyncTimeStopsAfterFirstSuccessfulEndpoint(t *testing.T) {
 	first_successful_time := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
-	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "test", MaxRespSize: 128, Retry: 0}
+	config := &Config{Timeout: Duration{Duration: time.Second}, UserAgent: "test", MaxRespSize: 128, Retry: 1}
 	config.Endpoints = []*Endpoint{
 		new_test_endpoint(t, "https://unavailable.example/time", "text", ENDPOINT_FORMAT_ISO, 0),
 		new_test_endpoint(t, "https://first-success.example/time", "text", ENDPOINT_FORMAT_ISO, 0),

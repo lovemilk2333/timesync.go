@@ -1,7 +1,7 @@
 package timesync
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 	"time"
@@ -396,6 +396,128 @@ func TestParseEndpointTypeTimestampValueTypes(t *testing.T) {
 }
 
 func time_ptr(t time.Time) *time.Time { return &t }
+
+func TestParseEndpointTypeRegex(t *testing.T) {
+	const body = "server time: 2025-02-19T21:20:00Z\n"
+	tests := []struct {
+		name      string
+		pattern   string
+		format    EndpointFormat
+		precision time.Duration
+		want      time.Time
+		want_err  bool
+	}{
+		{
+			name:    "extracts ISO timestamp",
+			pattern: `[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z`,
+			format:  EndpointFormatISO,
+			want:    time.Date(2025, time.February, 19, 21, 20, 0, 0, time.UTC),
+		},
+		{
+			name:      "extracts timestamp",
+			pattern:   `[0-9]+`,
+			format:    EndpointFormatTS,
+			precision: time.Millisecond,
+			want:      time.Unix(0, 2025*int64(time.Millisecond)),
+		},
+		{
+			name:     "pattern starting with a dot is valid",
+			pattern:  `.+`,
+			format:   EndpointFormatISO,
+			want_err: true, // matches, but the captured text is not an ISO timestamp
+		},
+		{
+			name:     "empty pattern fails",
+			pattern:  "",
+			format:   EndpointFormatISO,
+			want_err: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint := &Endpoint{Precision: Duration{Duration: tt.precision}, Format: tt.format}
+			getter, err := parse_endpoint_type(string(EndpointTypeRegex), tt.pattern)
+			if tt.want_err && tt.pattern == "" {
+				if err == nil {
+					t.Fatal("parse_endpoint_type() expected an error for an empty pattern")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parse_endpoint_type() error = %v", err)
+			}
+
+			got, err := getter(endpoint, []byte(body))
+			if tt.want_err {
+				if err == nil {
+					t.Fatal("getter() expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("getter() error = %v", err)
+			}
+			if !got.Equal(tt.want) {
+				t.Errorf("getter() time = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseTimeWithFormatTrimsWhitespace(t *testing.T) {
+	iso, err := parse_time_with_format(" 2025-02-19T21:20:00Z\n", 0, EndpointFormatISO)
+	if err != nil {
+		t.Fatalf("parse_time_with_format() ISO error = %v", err)
+	}
+	if want := time.Date(2025, time.February, 19, 21, 20, 0, 0, time.UTC); !iso.Equal(want) {
+		t.Errorf("ISO time = %v, want %v", iso, want)
+	}
+
+	ts, err := parse_time_with_format(" 2025 \n", time.Millisecond, EndpointFormatTS)
+	if err != nil {
+		t.Fatalf("parse_time_with_format() timestamp error = %v", err)
+	}
+	if want := time.Unix(0, 2025*int64(time.Millisecond)); !ts.Equal(want) {
+		t.Errorf("timestamp = %v, want %v", ts, want)
+	}
+}
+
+func TestParseTypeWithColonInPath(t *testing.T) {
+	getter, err := parse_endpoint_type(string(EndpointTypeJSON), "time:utc")
+	if err != nil {
+		t.Fatalf("parse_endpoint_type() error = %v", err)
+	}
+	endpoint := &Endpoint{Precision: valid_precision, Format: EndpointFormatTS}
+	body := build_json_body([]string{"time:utc"}, float64(1000))
+	got, err := getter(endpoint, body)
+	if err != nil {
+		t.Fatalf("getter() error = %v", err)
+	}
+	if want := time.Unix(0, 1000*int64(time.Second)); !got.Equal(want) {
+		t.Errorf("time = %v, want %v", got, want)
+	}
+
+	ep := &Endpoint{
+		OriginalURL: "https://example.com/data",
+		Type:        "json:time:utc",
+		Precision:   valid_precision,
+	}
+	if err := ep.Parse(NewValidator()); err != nil {
+		t.Fatalf("Endpoint.Parse() error = %v", err)
+	}
+	if ended, _, err := ep.GetTypePath(); err != nil || ended != EndpointTypeJSON {
+		t.Errorf("GetTypePath() = %v, %v; want json, nil", ended, err)
+	}
+}
+
+func TestParseJSONPathRejectsEmptySegments(t *testing.T) {
+	for _, p := range []string{"", ".a", "a.", "a..b."} {
+		if _, err := parse_json_path(p); err == nil {
+			t.Errorf("parse_json_path(%q) expected an error", p)
+		}
+	}
+}
 
 func TestConfigParseDefaultsTimeoutAndUA(t *testing.T) {
 	tests := []struct {

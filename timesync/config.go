@@ -1,7 +1,7 @@
 package timesync
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -25,8 +25,8 @@ func generate_ua() string {
 	)
 }
 
-const MaxConfigSize = 65536 * 1024 // 6 MiB
-const MaxRespSize = 16 * 1024      // 16 KiB
+const MaxConfigSize = 6 * 1024 // 6 MiB
+const MaxRespSize = 16 * 1024  // 16 KiB
 const MaxSuggestedPrecision = time.Minute
 const DefaultTimeout = 5 * time.Second
 const DefaultRetry = 2
@@ -72,17 +72,19 @@ func parse_time_with_format(val any, precision time.Duration, format EndpointFor
 	switch format {
 	case EndpointFormatTS:
 		var total_nano int64
-		if typed_val, ok := val.(float64); ok {
+		switch typed_val := val.(type) {
+		case float64:
 			total_nano = int64(typed_val * float64(precision))
-		} else if typed_val, ok := val.(string); ok {
+		case string:
+			typed_val = strings.TrimSpace(typed_val)
 			if int_val, err := strconv.ParseInt(typed_val, 10, 64); err == nil {
-				total_nano = int64(int_val) * int64(precision)
+				total_nano = int_val * int64(precision)
 			} else if float_val, err := strconv.ParseFloat(typed_val, 64); err == nil {
 				total_nano = int64(float_val * float64(precision))
 			} else {
 				return nil, fmt.Errorf("invalid value type (invalid `string` of `int64`/`float64 based 10: `%q`)", val)
 			}
-		} else {
+		default:
 			return nil, fmt.Errorf("invalid value type (expected `float64` or `string`, got `%T`)", val)
 		}
 
@@ -93,7 +95,7 @@ func parse_time_with_format(val any, precision time.Duration, format EndpointFor
 		if !ok {
 			return nil, fmt.Errorf("invalid value type (expected `string`, got `%T`)", val)
 		}
-		t, err := time.Parse(time.RFC3339, typed_val)
+		t, err := time.Parse(time.RFC3339, strings.TrimSpace(typed_val))
 		if err != nil {
 			return nil, err
 		}
@@ -121,6 +123,38 @@ func get_by_path(m map[string]any, path []string) (any, bool) {
 	return current, true
 }
 
+// parse_json_path splits a dotted JSON path into segments. A doubled dot (..)
+// encodes a literal dot inside a segment, so `a..b.c` resolves to `a.b` -> `c`.
+// Empty segments are rejected instead of silently producing unreachable keys.
+func parse_json_path(p string) ([]string, error) {
+	path := make([]string, 0)
+	segment := make([]byte, 0, len(p))
+
+	for i := 0; i < len(p); i++ {
+		if p[i] != EndpointJSONPathSeparator {
+			segment = append(segment, p[i])
+			continue
+		}
+		if i+1 < len(p) && p[i+1] == EndpointJSONPathSeparator {
+			segment = append(segment, EndpointJSONPathSeparator)
+			i++
+			continue
+		}
+		if len(segment) == 0 {
+			return nil, fmt.Errorf("invalid endpoint type `%q`: path must not be empty or contain an empty segment", EndpointTypeJSON)
+		}
+		path = append(path, string(segment))
+		segment = segment[:0]
+	}
+
+	if len(segment) == 0 {
+		return nil, fmt.Errorf("invalid endpoint type `%q`: path must not be empty or contain an empty segment", EndpointTypeJSON)
+	}
+	path = append(path, string(segment))
+
+	return path, nil
+}
+
 func parse_endpoint_type(t string, p string) (EndpointPathGetter, error) {
 	switch t {
 	case string(EndpointTypeText):
@@ -131,34 +165,9 @@ func parse_endpoint_type(t string, p string) (EndpointPathGetter, error) {
 			return parse_time_with_format(string(body), this.Precision.Duration, this.Format)
 		}, nil
 	case string(EndpointTypeJSON):
-		if len(p) == 0 || p[0] == EndpointJSONPathSeparator {
-			return nil, fmt.Errorf("invalid endpoint type `%q`: path must not be empty", EndpointTypeText)
-		}
-
-		index := 0
-		last_index := 0
-		target_index := len(p)
-		path := make([]string, 0)
-
-		for index < target_index {
-			if p[index] == EndpointJSONPathSeparator {
-				if index+1 < target_index && p[index+1] == EndpointJSONPathSeparator {
-					index += 2
-					continue
-				}
-
-				segment := p[last_index:index]
-				segment = strings.ReplaceAll(segment, EndpointJSONPathEscape, string(EndpointJSONPathSeparator))
-				path = append(path, segment)
-				last_index = index + 1
-			}
-			index++
-		}
-
-		if last_index <= len(p) {
-			segment := p[last_index:]
-			segment = strings.ReplaceAll(segment, EndpointJSONPathEscape, string(EndpointJSONPathSeparator))
-			path = append(path, segment)
+		path, err := parse_json_path(p)
+		if err != nil {
+			return nil, err
 		}
 
 		return func(this *Endpoint, body []byte) (*time.Time, error) {
@@ -175,8 +184,8 @@ func parse_endpoint_type(t string, p string) (EndpointPathGetter, error) {
 			}
 		}, nil
 	case string(EndpointTypeRegex):
-		if len(p) == 0 || p[0] == EndpointJSONPathSeparator {
-			return nil, fmt.Errorf("invalid endpoint type `%q`: path must not be empty", EndpointTypeText)
+		if len(p) == 0 {
+			return nil, fmt.Errorf("invalid endpoint type `%q`: pattern must not be empty", EndpointTypeRegex)
 		}
 
 		re, err := regexp.Compile(p)
@@ -185,7 +194,11 @@ func parse_endpoint_type(t string, p string) (EndpointPathGetter, error) {
 		}
 
 		return func(this *Endpoint, body []byte) (*time.Time, error) {
-			return parse_time_with_format(re.Find(body), this.Precision.Duration, this.Format)
+			match := re.Find(body)
+			if match == nil {
+				return nil, fmt.Errorf("regex pattern `%q` did not match the response body", p)
+			}
+			return parse_time_with_format(string(match), this.Precision.Duration, this.Format)
 		}, nil
 	default:
 		return nil, fmt.Errorf("invalid endpoint type `%q`", t)
@@ -235,10 +248,11 @@ func (this *Endpoint) GetTypePath() (EndpointType, EndpointPathGetter, error) {
 	var endpoint_type string
 	var endpoint_path string = ""
 
-	sep_index := strings.LastIndex(this.Type, EndpointTypeSeparator)
+	sep_index := strings.Index(this.Type, EndpointTypeSeparator)
 	if sep_index == -1 {
 		endpoint_type = this.Type
 	} else {
+		// Split at the first separator so paths/patterns may contain colons.
 		endpoint_type, endpoint_path = strings.ReplaceAll(this.Type[:sep_index], " ", ""), this.Type[sep_index+EndpointTypeSeparatorLength:]
 	}
 

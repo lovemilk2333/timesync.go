@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/akavel/rsrc v0.10.2 // indirect
+	github.com/creasty/defaults v1.11.0
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/go-playground/locales v0.14.2 // indirect
 	github.com/go-playground/universal-translator v0.18.2 // indirect

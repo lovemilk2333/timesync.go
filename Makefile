@@ -15,6 +15,10 @@ JSON_DST := timesync/embedded.json
 MANIFEST := timesync.xml
 SYSO := $(GO_SRC)/rsrc_windows_$(GOARCH).syso
 
+ZIG := $(HOME)/tools/zig/zig
+ZIG_TARGET_5_15 := aarch64-linux-gnu.2.31
+ZIG_TARGET_LATEST := aarch64-linux-gnu.2.41
+
 BUILDFLAGS := -trimpath
 LDFLAGS    := -s -w
 
@@ -41,6 +45,12 @@ build-linux: $(JSON_DST) $(GO_SRCS)
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) \
 		$(GO) build $(BUILDFLAGS) -ldflags="$(LDFLAGS)" \
 		-o $(BIN_DIR)/$(APP)-linux-$(GOARCH) $(GO_SRC)
+
+build-linux-5.15: $(JSON_DST) $(GO_SRCS)
+	@echo ">> build linux/$(GOARCH)/5.15"
+	CGO_ENABLED=1 GOOS=linux CC="$(ZIG) cc -target $(ZIG_TARGET_5_15)" \
+		$(GO) build $(BUILDFLAGS) -ldflags="$(LDFLAGS)" \
+		-o $(BIN_DIR)/$(APP)-linux-$(GOARCH)-5.15 $(GO_SRC)
 
 build-win: $(JSON_DST) $(SYSO) $(GO_SRCS)
 	@echo ">> build windows/$(GOARCH)"

@@ -1,9 +1,16 @@
 package timesync
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json/v2"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptrace"
 	"os"
@@ -66,25 +73,128 @@ func TestLoadConfigUsesWorkingDirectoryAndFallsBackWhenMissing(t *testing.T) {
 		if len(config.Endpoints) == 0 {
 			t.Fatal("embedded default config has no endpoints")
 		}
+		if !config.TLSVerify || config.TLSTimeVerify {
+			t.Errorf("embedded TLS defaults = tls-verify:%v tls-time-verify:%v, want true and false", config.TLSVerify, config.TLSTimeVerify)
+		}
+	})
+
+	t.Run("retains TLS defaults for omitted fields and accepts explicit false", func(t *testing.T) {
+		dir := t.TempDir()
+		config_data := `{"endpoints":[{"url":"https://override.example/time","type":"text","precision":"1ms","format":"iso","method":"get"}]}`
+		if err := os.WriteFile(filepath.Join(dir, CONFIG_FILE), []byte(config_data), 0o600); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
+		if err := os.Chdir(dir); err != nil {
+			t.Fatalf("Chdir() error = %v", err)
+		}
+
+		config, loaded := load_config()
+		if !loaded {
+			t.Fatal("load_config() did not load config file")
+		}
+		if !config.TLSVerify || config.TLSTimeVerify {
+			t.Errorf("TLS defaults = tls-verify:%v tls-time-verify:%v, want true and false", config.TLSVerify, config.TLSTimeVerify)
+		}
+
+		if err := os.WriteFile(filepath.Join(dir, CONFIG_FILE), []byte(`{"tls-verify":false,"endpoints":[{"url":"https://override.example/time","type":"text","precision":"1ms","format":"iso","method":"get"}]}`), 0o600); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
+		config, loaded = load_config()
+		if !loaded {
+			t.Fatal("load_config() did not load config file with explicit false")
+		}
+		if config.TLSVerify || config.TLSTimeVerify {
+			t.Errorf("TLS settings = tls-verify:%v tls-time-verify:%v, want false and default false", config.TLSVerify, config.TLSTimeVerify)
+		}
 	})
 }
 
-func TestNewHTTPClientTLSVerifyDefaultsToFalse(t *testing.T) {
-	config := &Config{Timeout: Duration{Duration: time.Second}}
+func TestNewHTTPClientTLSVerificationOptions(t *testing.T) {
+	config := &Config{Timeout: Duration{Duration: time.Second}, TLSVerify: true}
 	client := new_http_client(config)
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok || transport.TLSClientConfig == nil {
 		t.Fatal("new_http_client() did not configure an HTTP transport")
 	}
-	if !transport.TLSClientConfig.InsecureSkipVerify {
-		t.Error("TLS verification should be disabled by default")
+	if !transport.TLSClientConfig.InsecureSkipVerify || transport.TLSClientConfig.VerifyConnection == nil {
+		t.Error("TLS verification should validate the chain while allowing out-of-time certificates by default")
 	}
 
-	config.TLSVerify = true
+	config.TLSTimeVerify = true
 	client = new_http_client(config)
 	transport = client.Transport.(*http.Transport)
-	if transport.TLSClientConfig.InsecureSkipVerify {
-		t.Error("TLS verification should be enabled when tls-verify is true")
+	if transport.TLSClientConfig.InsecureSkipVerify || transport.TLSClientConfig.VerifyConnection != nil {
+		t.Error("tls-time-verify should use Go's normal chain and time verification")
+	}
+
+	config.TLSVerify = false
+	client = new_http_client(config)
+	transport = client.Transport.(*http.Transport)
+	if !transport.TLSClientConfig.InsecureSkipVerify || transport.TLSClientConfig.VerifyConnection != nil {
+		t.Error("tls-verify=false should disable certificate verification")
+	}
+}
+
+func TestVerifyTLSChainWithoutTime(t *testing.T) {
+	now := time.Now()
+	root_key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root_template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test root"},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.Add(time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+	}
+	root_der, err := x509.CreateCertificate(rand.Reader, root_template, root_template, &root_key.PublicKey, root_key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := x509.ParseCertificate(root_der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf_key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf_template := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		DNSNames:     []string{"time.example"},
+		NotBefore:    now.Add(-2 * time.Hour),
+		NotAfter:     now.Add(-time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	leaf_der, err := x509.CreateCertificate(rand.Reader, leaf_template, root, &leaf_key.PublicKey, root_key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(leaf_der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(root)
+	state := tls.ConnectionState{PeerCertificates: []*x509.Certificate{leaf}, ServerName: "time.example"}
+	if err := verify_tls_chain_without_time_with_roots(state, roots); err != nil {
+		t.Fatalf("valid chain with expired leaf should pass when time checks are disabled: %v", err)
+	}
+	if err := verify_tls_chain_without_time(state); err == nil {
+		t.Fatal("verification should reject a chain signed by an untrusted root")
+	}
+	leaf.NotBefore = now.Add(time.Hour)
+	leaf.NotAfter = now.Add(2 * time.Hour)
+	if err := verify_tls_chain_without_time_with_roots(state, roots); err != nil {
+		t.Fatalf("valid chain with a not-yet-valid leaf should pass when time checks are disabled: %v", err)
+	}
+	state.ServerName = "wrong.example"
+	if err := verify_tls_chain_without_time_with_roots(state, roots); err == nil {
+		t.Fatal("verification should reject a hostname mismatch")
 	}
 }
 

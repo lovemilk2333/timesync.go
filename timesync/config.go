@@ -340,13 +340,14 @@ func (this *Endpoint) Parse(validator StructValidator) error {
 }
 
 type Config struct {
-	LogLevel    string      `json:"log-level"`
-	UserAgent   string      `json:"user-agent"`
-	MaxRespSize uint        `json:"max-resp-size"`
-	Timeout     Duration    `json:"timeout"`
-	Retry       uint        `json:"retry"`
-	TLSVerify   bool        `json:"tls-verify"`
-	Endpoints   []*Endpoint `json:"endpoints"`
+	LogLevel      string      `json:"log-level"`
+	UserAgent     string      `json:"user-agent"`
+	MaxRespSize   uint        `json:"max-resp-size"`
+	Timeout       Duration    `json:"timeout"`
+	Retry         uint        `json:"retry"`
+	TLSVerify     bool        `json:"tls-verify" default:"true"`
+	TLSTimeVerify bool        `json:"tls-time-verify" default:"false"`
+	Endpoints     []*Endpoint `json:"endpoints"`
 }
 
 func (this *Config) GetLogLevel() (slog.Level, bool) {

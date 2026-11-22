@@ -44,6 +44,15 @@ jobs:
                   sudo apt-get install --yes --no-install-recommends gcc-mingw-w64-x86-64
                   x86_64-w64-mingw32-gcc --version
 
+            - name: Install Zig for Linux 5.15 Glibc
+              run: |
+                  mkdir -p "$HOME/tools"
+                  curl -sL -o /tmp/zig.tar.xz \
+                      https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz
+                  tar -C "$HOME/tools" -xf /tmp/zig.tar.xz
+                  mv "$HOME/tools/zig-x86_64-linux-0.14.1" "$HOME/tools/zig"
+                  "$HOME/tools/zig/zig" version
+
             - name: Run Make
               run: |
                   echo "Building..."
@@ -57,6 +66,7 @@ jobs:
 
                   zip -j release_dist/timesync-linux-amd64.zip bin/timesync-linux-amd64
                   zip -j release_dist/timesync-windows-amd64.zip bin/timesync-windows-amd64.exe
+                  zip -j release_dist/timesync-linux-arm64-5.15.zip bin/timesync-linux-arm64-5.15
 
                   INPUT_TAG="${{ github.event.inputs.release_tag }}"
                   if [ -n "$INPUT_TAG" ]; then

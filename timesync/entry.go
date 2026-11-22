@@ -2,17 +2,19 @@ package timesync
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	_ "embed"
 	"encoding/json/v2"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptrace"
 	"os"
 	"sync"
 	"time"
 
-	"log/slog"
+	"github.com/creasty/defaults"
 )
 
 //go:embed embedded.json
@@ -24,6 +26,10 @@ const CONFIG_FILE = "config.json"
 
 func load_config() (*Config, bool) {
 	var default_config Config
+	if err := defaults.Set(&default_config); err != nil {
+		logger.Error("failed to set default config values", slog.Any("error", err))
+		return nil, false
+	}
 	if err := json.Unmarshal(default_config_data, &default_config); err != nil {
 		logger.Error("failed to unmarshal default config json", slog.Any("error", err))
 		return nil, false
@@ -50,7 +56,11 @@ func load_config() (*Config, bool) {
 		return &default_config, false
 	}
 
-	var config Config
+	config := default_config
+	if err := defaults.Set(&config); err != nil {
+		logger.Error("failed to set config defaults", slog.Any("error", err))
+		return &default_config, false
+	}
 	if err := json.Unmarshal(data, &config); err != nil {
 		logger.Error("failed to unmarshal config json", slog.Any("error", err))
 		return &default_config, false
@@ -168,8 +178,41 @@ func new_http_client(config *Config) *http.Client {
 	} else {
 		transport.TLSClientConfig = transport.TLSClientConfig.Clone()
 	}
-	transport.TLSClientConfig.InsecureSkipVerify = !config.TLSVerify
+	transport.TLSClientConfig.InsecureSkipVerify = !config.TLSVerify || !config.TLSTimeVerify
+	if config.TLSVerify && !config.TLSTimeVerify {
+		transport.TLSClientConfig.VerifyConnection = verify_tls_chain_without_time
+	}
 	return &http.Client{Timeout: config.Timeout.Duration, Transport: transport}
+}
+
+func verify_tls_chain_without_time(state tls.ConnectionState) error {
+	return verify_tls_chain_without_time_with_roots(state, nil)
+}
+
+// https://stackoverflow.com/a/25065327/24304311
+var TIME_MAX = time.Unix(1<<63-1, 0).UTC()
+
+func verify_tls_chain_without_time_with_roots(state tls.ConnectionState, roots *x509.CertPool) error {
+	if len(state.PeerCertificates) == 0 {
+		return fmt.Errorf("peer did not provide a certificate")
+	}
+	intermediates := x509.NewCertPool()
+	for _, certificate := range state.PeerCertificates[1:] {
+		clone := *certificate
+		clone.NotBefore = time.Time{}
+		clone.NotAfter = TIME_MAX
+		intermediates.AddCert(&clone)
+	}
+	leaf := *state.PeerCertificates[0]
+	leaf.NotBefore = time.Time{}
+	leaf.NotAfter = TIME_MAX
+	_, err := leaf.Verify(x509.VerifyOptions{
+		DNSName:       state.ServerName,
+		Intermediates: intermediates,
+		Roots:         roots,
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	})
+	return err
 }
 
 func sync_time_with_client(config *Config, client HttpDoer, set_time func(*time.Time) error) error {

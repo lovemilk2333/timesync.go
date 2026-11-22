@@ -47,7 +47,8 @@ Max size of config file is 6 MiB
     "max-resp-size": 16384,  // 16 KiB
     "timeout": "2500ms",
     "retry": 2,  // total request attempts per endpoint, `0` as default `2` retries, `1` to disable retry
-    "tls-verify": false,  // defaults to false for compatibility with broken TLS interception. Enable it whenever possible
+    "tls-verify": true,  // validates certificate trust and hostname
+    "tls-time-verify": false,  // skips certificate NotBefore/NotAfter checks while retaining trust and hostname validation
     "endpoints": [
         {
             "url": "https://www.tsa.cn/api/time/getCurrentTime",  // url

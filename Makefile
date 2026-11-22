@@ -24,7 +24,7 @@ LDFLAGS    := -s -w
 
 GO_SRCS    := $(shell find . -name '*.go' -not -path './vendor/*')
 
-all: build-linux build-win
+all: build-linux build-win build-linux-5.15
 
 $(JSON_DST): $(JSON_SRC)
 	@echo ">> minify JSON: $< -> $@"

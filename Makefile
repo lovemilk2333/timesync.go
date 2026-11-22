@@ -48,7 +48,7 @@ build-linux: $(JSON_DST) $(GO_SRCS)
 
 build-linux-5.15: $(JSON_DST) $(GO_SRCS)
 	@echo ">> build linux/$(GOARCH)/5.15"
-	CGO_ENABLED=1 GOOS=linux CC="$(ZIG) cc -target $(ZIG_TARGET_5_15)" \
+	CGO_ENABLED=0 GOOS=linux CC="$(ZIG) cc -target $(ZIG_TARGET_5_15)" \
 		$(GO) build $(BUILDFLAGS) -ldflags="$(LDFLAGS)" \
 		-o $(BIN_DIR)/$(APP)-linux-$(GOARCH)-5.15 $(GO_SRC)
 

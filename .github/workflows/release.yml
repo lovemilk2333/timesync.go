@@ -58,15 +58,19 @@ jobs:
                   echo "Building..."
 
                   make all
+                  GOARCH=arm64 make all
 
             - name: Prepare Assets and Tag
               id: prep
               run: |
                   mkdir -p release_dist
 
-                  zip -j release_dist/timesync-linux-amd64.zip bin/timesync-linux-amd64
-                  zip -j release_dist/timesync-windows-amd64.zip bin/timesync-windows-amd64.exe
-                  zip -j release_dist/timesync-linux-arm64-5.15.zip bin/timesync-linux-arm64-5.15
+                  for file in bin/*; do
+                    [ -f "$file" ] || continue
+                    base="${file##*/}"
+                    name="${base%.*}"
+                    zip -j "release_dist/${name}.zip" "$file"
+                  done
 
                   INPUT_TAG="${{ github.event.inputs.release_tag }}"
                   if [ -n "$INPUT_TAG" ]; then
